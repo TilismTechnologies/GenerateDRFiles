@@ -252,7 +252,7 @@ namespace GenerateDRFiles
 
                             // Fetch DR records matching FileId from the target client DR table
                             string drQuery = string.Format(
-                                "SELECT aDate as Date, Mask, Telco, Mobile, Scode, MsgId, dDate, dstatus as DeliveryStatus, FileId " +
+                                "SELECT aDate as Date, Mask, Telco, Mobile, Scode, MsgId, dDate, dstatus as DeliveryStatus, FileId, sms " +
                                 "FROM {0} WHERE FileId = '{1}' ORDER BY id",
                                 drTableName, FileId);
 
