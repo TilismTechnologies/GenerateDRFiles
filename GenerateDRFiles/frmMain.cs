@@ -23,6 +23,7 @@ namespace GenerateDRFiles
         private TimeSpan _AppStartTime;
         private TimeSpan _AppEndTime;
         Thread ThreadProcessGenerateDRFile;
+        Thread ThreadProcessBalanceUpdate;
 
         public frmMain()
         {
@@ -68,7 +69,7 @@ namespace GenerateDRFiles
             tmrTime.Interval =  1000;
             objStopWatch = new Stopwatch();
             ThreadProcessGenerateDRFile = new Thread(ProcessGenerateDRFile);
-            
+            ThreadProcessBalanceUpdate = new Thread(ProcessUpdateBalance);
 
 
             try
@@ -87,6 +88,7 @@ namespace GenerateDRFiles
         {
             try
             {
+
                 TimeSpan currentTime = DateTime.Now.TimeOfDay;
                 if (currentTime >= _AppStartTime && currentTime <= _AppEndTime)
                 {
@@ -97,11 +99,14 @@ namespace GenerateDRFiles
                         ThreadProcessGenerateDRFile.Start();
                     }
                 }
-                else
-                {
 
-                    //CreateLog("Timer Tick: Outside defined time range.", "TimerDebug", AppConfig.TransferLogPath);
+                if (ThreadProcessBalanceUpdate.IsAlive == false)
+                {
+                    ThreadProcessBalanceUpdate = new Thread(ProcessUpdateBalance);
+                    ThreadProcessBalanceUpdate.IsBackground = false;
+                    ThreadProcessBalanceUpdate.Start();
                 }
+
             }
             catch (Exception ex)
             {
@@ -109,7 +114,71 @@ namespace GenerateDRFiles
                 CreateLog($"Error in Timer Tick: {ex.Message}", "TimerError", AppConfig.GenrateLogPath);
             }
         }
-      
+     
+        public void ProcessUpdateBalance()
+        {
+            string SQL = string.Empty;
+            DataTable BalanceDT = new DataTable();
+
+            string balanceId = string.Empty;
+            string balanceSystemId = string.Empty;
+            string balanceSystemPass = string.Empty;
+            string _URL = string.Empty;
+            string _Response = string.Empty;
+            string _balance1 = string.Empty;
+            string _balance2 = string.Empty;
+            try
+            {
+                DAL balanceDAL = new DAL(AppConfig.SetupConnectionString);
+
+                SQL = "SELECT id, SMPPSystemId, SMPPPass " +
+                    "FROM MonitoringDB..SMPPBalance " +
+                    " where Telco = 'Mobilink' " +
+                    " and active = 'Y' " +
+                    " and DATEDIFF(MINUTE, LastUpdate, getdate()) > 10";
+                BalanceDT = balanceDAL.ExecuteDataTable(SQL);
+
+                foreach (DataRow bulkMsgRow in BalanceDT.Rows)
+                {
+                    balanceId = bulkMsgRow["id"].ToString();
+                    balanceSystemId = bulkMsgRow["SMPPSystemId"].ToString();
+                    balanceSystemPass = bulkMsgRow["SMPPPass"].ToString();
+
+                    _URL = string.Empty;
+                    _Response = string.Empty;
+                    _balance1 = "0";
+                    _balance2 = "0";
+
+                    _URL = string.Format("https://connect.jazzcmt.com/request_sms_check.html?Username={0}&Password={1}", balanceSystemId, balanceSystemPass);
+                    using (WebClient client = new WebClient())
+                    {
+                        _Response = client.DownloadString(_URL);
+                    }
+                    if (_Response.Length > 0)
+                    {
+                        if (_Response.Contains(","))
+                        {
+                            string[] aMTBalance = _Response.Split(',');
+                            _balance1 = aMTBalance[0];
+                            _balance2 = aMTBalance[1];
+                        }
+                        else
+                        {
+                            _balance1 = _Response;
+                        }
+                    }
+                    ShowActivity(ActivityType.AddTransactionList, string.Format("Update Balance for : {0} | Balance1: {1} | Balance1: {2}", balanceSystemId, _balance1, _balance2));
+                    SQL = string.Format(" update MonitoringDB..SMPPBalance set Balance1 = '{0}', Balance2 = '{1}', LastUpdate = getdate() where id = '{2}'",_balance1, _balance2, balanceId);
+                    balanceDAL.doExecute(SQL, AppConfig.SetupConnectionString);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                ShowActivity(ActivityType.AddErrorList, string.Format("[ProcessUpdateBalance]: {0}", ex.Message));
+                CreateLog(string.Format("Error in ProcessUpdateBalance: {0}", ex.Message), "UpdateBalanceErr", AppConfig.GenrateLogPath);
+            }
+        }
         public static string GetFolderName()
         {
             return string.Format("DL_{0}", DateTime.Now.ToString("yyyyMMM"));
