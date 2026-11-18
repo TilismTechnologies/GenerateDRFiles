@@ -135,7 +135,7 @@ namespace GenerateDRFiles
                     "FROM MonitoringDB..SMPPBalance " +
                     " where Telco = 'Mobilink' " +
                     " and active = 'Y' " +
-                    " and DATEDIFF(MINUTE, LastUpdate, getdate()) > 10";
+                    " and DATEDIFF(MINUTE, LastUpdate, getdate()) >= 15";
                 BalanceDT = balanceDAL.ExecuteDataTable(SQL);
 
                 foreach (DataRow bulkMsgRow in BalanceDT.Rows)
